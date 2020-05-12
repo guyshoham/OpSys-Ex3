@@ -1,8 +1,10 @@
+//Guy Shoham 302288444
+
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/fcntl.h>
 #include <sys/stat.h>
-#include <string.h>
 #include <unistd.h>
 
 bool checkSimilarity(int fdSmall, int fdBig, int countToReach, int offsets);
