@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 bool isDir(int type);
@@ -17,11 +18,13 @@ int main(int argc, char** argv) {
   char* line1, * line2, * line3;
   char buf[1024], cwdCurr[PATH_MAX], cwdInit[PATH_MAX];
   int readStatus, cdStatus;
-  pid_t val;
+  //pid_t forkVal;
   int fd_conf, fd_input, fd_output, fd_csv;
   bool fileFound;
   DIR* pOuterDir, * pInnerDir;
   struct dirent* pOuterDirent, * pInnerDirent;
+  time_t start, end;
+  double dif;
 
   initPwd = getcwd(cwdInit, sizeof(cwdInit));
 
@@ -67,7 +70,6 @@ int main(int argc, char** argv) {
       /// look for C file inside dir
 
       fileFound = false;
-
       currentPwd = getcwd(cwdCurr, sizeof(cwdCurr));
       if ((pInnerDir = opendir(currentPwd)) == NULL) {
         exit(-1);
@@ -76,8 +78,7 @@ int main(int argc, char** argv) {
       while ((pInnerDirent = readdir(pInnerDir)) != NULL) {
         if (isCFile(pInnerDirent->d_name)) {
           fileFound = true;
-          val = fork();
-          if (val == 0) { //child process
+          if (fork() == 0) { //child process
             if (execlp("gcc", "gcc", pInnerDirent->d_name, "-o", "example.out", NULL) == -1) {
               perror("error compiling: ");
               return -1;
@@ -86,8 +87,7 @@ int main(int argc, char** argv) {
 
           wait(NULL);
           ///done compiling
-          if (access("example.out", F_OK) == -1) {
-            // file doesn't exist
+          if (access("example.out", F_OK) == -1) { // file doesn't exist (means compilation error)
             char result[1024];
             strcpy(result, pOuterDirent->d_name);
             strcat(result, ",COMPILATION_ERROR,10\n\0");
@@ -95,8 +95,8 @@ int main(int argc, char** argv) {
             continue;
           }
 
-          val = fork();
-          if (val == 0) { //child process
+          time(&start); // begin timeout check
+          if (fork() == 0) { //child process
             if ((fd_input = open(line2, O_RDONLY)) < 0) {
               perror("open input file: "); /* open failed */
               exit(-1);
@@ -115,7 +115,15 @@ int main(int argc, char** argv) {
           }
           wait(NULL);
           ///done executing
-          //TODO: check timeout
+          time(&end); // stop timeout check
+          dif = difftime(end, start);
+          if (dif > 3) {
+            char result[1024];
+            strcpy(result, pOuterDirent->d_name);
+            strcat(result, ",TIMEOUT,20\n\0");
+            write(fd_csv, result, strlen(result));
+            continue;
+          }
 
           char outputPath[PATH_MAX];
           strcpy(outputPath, line1);
@@ -124,8 +132,7 @@ int main(int argc, char** argv) {
           strcat(outputPath, "/output.txt");
 
           int ret;
-          val = fork();
-          if (val == 0) { //child process
+          if (fork() == 0) { //child process
             chdir(initPwd);
             if (execlp("./comp.out", "comp.out", outputPath, line3, NULL) == -1) {
               perror("error: ");
@@ -164,9 +171,8 @@ int main(int argc, char** argv) {
         write(fd_csv, result, strlen(result));
       }
 
-      /// end of searching, go back to line1
+      /// end of innerDir searching, go back to line1
       chdir(line1);
-
     }
 
   } //end of while loop
@@ -176,7 +182,6 @@ int main(int argc, char** argv) {
   close(fd_input);
   close(fd_output);
   close(fd_csv);
-
 }
 
 bool isCFile(const char* str) { return (str && *str && str[strlen(str) - 1] == 'c') ? true : false; }
