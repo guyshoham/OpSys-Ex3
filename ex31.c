@@ -87,13 +87,10 @@ int main(int argc, char** argv) {
   close(fd2);
 
   if (equal) {
-    printf("equal\n");
     return 1;
   } else if (similar) {
-    printf("similar\n");
     return 3;
   } else {
-    printf("different\n");
     return 2;
   }
 }
