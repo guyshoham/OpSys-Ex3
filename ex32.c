@@ -6,6 +6,7 @@
 #include <string.h>
 #include <sys/fcntl.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 bool isDir();
@@ -17,6 +18,7 @@ int main(int argc, char** argv) {
   char buf[1024], cwdCurr[PATH_MAX];
   int readStatus, status;
   int cdStatus;
+  pid_t val;
 
   //open conf.txt
   int fd = open(path, O_RDONLY);
@@ -65,6 +67,16 @@ int main(int argc, char** argv) {
       while ((studentDirent = readdir(studentDir)) != NULL) {
         if (isCFile(studentDirent->d_name)) {
           printf("%s\n", studentDirent->d_name);
+          val = fork();
+          if (val == 0) { //child process
+            status = execlp("gcc", "gcc", studentDirent->d_name, "-o", "example.out", NULL);
+            if (status == -1) {
+              perror("gcc ");
+            }
+          } else {
+            wait(&status);
+          }
+
         }
       } //end of student dir while loop
 
