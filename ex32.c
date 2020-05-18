@@ -14,14 +14,15 @@ bool isDir(int type);
 bool isCFile(const char* str);
 void removeCompiledFile();
 void removeOutputFile();
+void moveToDir(char* path);
+void checkWriteSysCall();
 
 int main(int argc, char** argv) {
+  char msg[100];
   char* path = argv[1], * currentPwd, * initPwd;
   char* line1, * line2, * line3;
   char buf[1024], cwdCurr[PATH_MAX], cwdInit[PATH_MAX];
-  int readStatus, cdStatus;
-  //pid_t forkVal;
-  int fd_conf, fd_input, fd_output, fd_csv;
+  int fd_conf, fd_input, fd_output, fd_csv, status;
   bool fileFound;
   DIR* pOuterDir, * pInnerDir;
   struct dirent* pOuterDirent, * pInnerDirent;
@@ -31,46 +32,47 @@ int main(int argc, char** argv) {
   initPwd = getcwd(cwdInit, sizeof(cwdInit));
 
   //open conf.txt
-  fd_conf = open(path, O_RDONLY);
-  if (fd_conf < 0) /* means file open did not take place */
-  {
-    perror("after open ");   /* text explaining why */
-    return (-1);
+  if ((fd_conf = open(path, O_RDONLY)) < 0) {
+    strcpy(msg, "error opening file conf.txt\0");
+    status = write(2, msg, strlen(msg));
+    checkWriteSysCall(status);
+    exit(-1);
   }
 
   //split conf.txt
-  readStatus = read(fd_conf, buf, 1024);
+  if ((status = read(fd_conf, buf, 1024)) < 0) {
+    strcpy(msg, "error reading conf.txt\0");
+    status = write(2, msg, strlen(msg));
+    checkWriteSysCall(status);
+    exit(-1);
+  }
   line1 = strtok(buf, "\n");
   line2 = strtok(NULL, "\n");
   line3 = strtok(NULL, "\n");
 
   if ((fd_csv = open("result.csv", O_CREAT | O_TRUNC | O_WRONLY, 0644)) < 0) {
-    perror("result.csv: "); /* open failed */
+    strcpy(msg, "error opening result.csv\0");
+    status = write(2, msg, strlen(msg));
+    checkWriteSysCall(status);
     exit(-1);
   }
 
   // cd into line1
-  cdStatus = chdir(line1);
-  if (cdStatus == -1) {
-    perror("Error: \n");
+  moveToDir(line1);
+
+  if ((pOuterDir = opendir(line1)) == NULL) {
+    strcpy(msg, "opendir error\0");
+    status = write(2, msg, strlen(msg));
+    checkWriteSysCall(status);
     exit(-1);
   }
-
-  if ((pOuterDir = opendir(line1)) == NULL)
-    exit(-1);
 
   // looping through the directory, printing the directory entry name
   while ((pOuterDirent = readdir(pOuterDir)) != NULL) {
     if (isDir(pOuterDirent->d_type)) { //DIR type
-
-      cdStatus = chdir(pOuterDirent->d_name);
-      if (cdStatus == -1) {
-        perror("Error: ");
-        exit(-1);
-      }
+      moveToDir(pOuterDirent->d_name);
 
       /// look for C file inside dir
-
       fileFound = false;
       currentPwd = getcwd(cwdCurr, sizeof(cwdCurr));
       if ((pInnerDir = opendir(currentPwd)) == NULL) {
@@ -82,29 +84,36 @@ int main(int argc, char** argv) {
           fileFound = true;
           if (fork() == 0) { //child process
             if (execlp("gcc", "gcc", pInnerDirent->d_name, "-o", "example.out", NULL) == -1) {
-              perror("error compiling: ");
+              strcpy(msg, "gcc: error compiling\0");
+              status = write(2, msg, strlen(msg));
+              checkWriteSysCall(status);
               return -1;
             }
           }
 
-          wait(NULL);
+          wait(&status);
           ///done compiling
-          if (access("example.out", F_OK) == -1) { // file doesn't exist (means compilation error)
+          if (WEXITSTATUS(status) != 0) { //gcc failed
             char result[1024];
             strcpy(result, pOuterDirent->d_name);
             strcat(result, ",COMPILATION_ERROR,10\n\0");
-            write(fd_csv, result, strlen(result));
+            status = write(fd_csv, result, strlen(result));
+            checkWriteSysCall(status);
             continue;
           }
 
           time(&start); // begin timeout check
           if (fork() == 0) { //child process
             if ((fd_input = open(line2, O_RDONLY)) < 0) {
-              perror("open input file: "); /* open failed */
+              strcpy(msg, "error opening file input.txt\0");
+              status = write(2, msg, strlen(msg));
+              checkWriteSysCall(status);
               exit(-1);
             }
             if ((fd_output = open("output.txt", O_CREAT | O_TRUNC | O_WRONLY, 0644)) < 0) {
-              perror("output.txt: "); /* open failed */
+              strcpy(msg, "error opening file output.txt\0");
+              status = write(2, msg, strlen(msg));
+              checkWriteSysCall(status);
               exit(-1);
             }
 
@@ -112,7 +121,10 @@ int main(int argc, char** argv) {
             dup2(fd_output, STDOUT_FILENO);
 
             if (execlp("./example.out", "example.out", NULL) == -1) {
-              perror("error executing: ");
+              strcpy(msg, "error executing example.out\0");
+              status = write(2, msg, strlen(msg));
+              checkWriteSysCall(status);
+              exit(-1);
             }
           }
           wait(NULL);
@@ -123,27 +135,31 @@ int main(int argc, char** argv) {
             char result[1024];
             strcpy(result, pOuterDirent->d_name);
             strcat(result, ",TIMEOUT,20\n\0");
-            write(fd_csv, result, strlen(result));
+            status = write(fd_csv, result, strlen(result));
+            checkWriteSysCall(status);
             continue;
           }
 
+          //build the output path
           char outputPath[PATH_MAX];
           strcpy(outputPath, line1);
           strcat(outputPath, "/");
           strcat(outputPath, pOuterDirent->d_name);
           strcat(outputPath, "/output.txt");
 
-          int ret;
           if (fork() == 0) { //child process
-            chdir(initPwd);
+            moveToDir(initPwd);
             if (execlp("./comp.out", "comp.out", outputPath, line3, NULL) == -1) {
-              perror("error: ");
+              strcpy(msg, "error executing comp.out\0");
+              status = write(2, msg, strlen(msg));
+              checkWriteSysCall(status);
+              exit(-1);
             }
           }
-          wait(&ret);
+          wait(&status);
           ///done comparing
 
-          int retVal = WEXITSTATUS(ret);
+          int retVal = WEXITSTATUS(status);
           char result[1024];
           strcpy(result, pOuterDirent->d_name);
           switch (retVal) {
@@ -173,17 +189,15 @@ int main(int argc, char** argv) {
         write(fd_csv, result, strlen(result));
       }
 
-      /// end of innerDir searching, go back to line1
+      /// end of innerDir searching, removing files i created
 
-      //todo: remove output.txt and example.out
-
-      chdir(line1);
-      chdir(pOuterDirent->d_name);
+      moveToDir(line1);
+      moveToDir(pOuterDirent->d_name);
       removeCompiledFile();
       removeOutputFile();
 
-
-      chdir(line1);
+      ///go back to line1
+      moveToDir(line1);
     }
 
   } //end of while loop
@@ -201,8 +215,12 @@ void removeCompiledFile() {
   if (access("example.out", F_OK) != -1) { // file exist
     if (fork() == 0) { //child process
       if (execlp("rm", "rm", "example.out", NULL) == -1) {
-        perror("rm: ");
-      }
+        int status;
+        char msg[100];
+        strcpy(msg, "error removing example.out\0");
+        status = write(2, msg, strlen(msg));
+        checkWriteSysCall(status);
+        exit(-1);      }
     }
     wait(NULL);
   }
@@ -211,9 +229,27 @@ void removeOutputFile() {
   if (access("output.txt", F_OK) != -1) { // file exist
     if (fork() == 0) { //child process
       if (execlp("rm", "rm", "output.txt", NULL) == -1) {
-        perror("rm: ");
+        int status;
+        char msg[100];
+        strcpy(msg, "error removing output.txt\0");
+        status = write(2, msg, strlen(msg));
+        checkWriteSysCall(status);
+        exit(-1);
       }
     }
     wait(NULL);
   }
 }
+void moveToDir(char* path) {
+  int status;
+
+  status = chdir(path);
+  if (status == -1) {
+    char msg[100];
+    strcpy(msg, "chdir error\0");
+    status = write(2, msg, strlen(msg));
+    checkWriteSysCall(status);
+    exit(-1);
+  }
+}
+void checkWriteSysCall(int status) { if (WEXITSTATUS(status) == -1) { exit(-1); }}
