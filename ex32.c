@@ -12,6 +12,8 @@
 
 bool isDir(int type);
 bool isCFile(const char* str);
+void removeCompiledFile();
+void removeOutputFile();
 
 int main(int argc, char** argv) {
   char* path = argv[1], * currentPwd, * initPwd;
@@ -172,6 +174,15 @@ int main(int argc, char** argv) {
       }
 
       /// end of innerDir searching, go back to line1
+
+      //todo: remove output.txt and example.out
+
+      chdir(line1);
+      chdir(pOuterDirent->d_name);
+      removeCompiledFile();
+      removeOutputFile();
+
+
       chdir(line1);
     }
 
@@ -186,3 +197,23 @@ int main(int argc, char** argv) {
 
 bool isCFile(const char* str) { return (str && *str && str[strlen(str) - 1] == 'c') ? true : false; }
 bool isDir(int type) { return type == 4 ? true : false; }
+void removeCompiledFile() {
+  if (access("example.out", F_OK) != -1) { // file exist
+    if (fork() == 0) { //child process
+      if (execlp("rm", "rm", "example.out", NULL) == -1) {
+        perror("rm: ");
+      }
+    }
+    wait(NULL);
+  }
+}
+void removeOutputFile() {
+  if (access("output.txt", F_OK) != -1) { // file exist
+    if (fork() == 0) { //child process
+      if (execlp("rm", "rm", "output.txt", NULL) == -1) {
+        perror("rm: ");
+      }
+    }
+    wait(NULL);
+  }
+}
