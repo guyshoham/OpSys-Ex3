@@ -101,7 +101,8 @@ bool checkSimilarity(int fdSmall, int fdBig, int countToReach, int offsets) {
   int offsetCount = 0;
   int readSmall, readBig;
 
-  for (int i = 0; i < offsets; i++) {
+  int i;
+  for (i = 0; i < offsets; i++) {
     charMatched = 0;
     lseek(fdSmall, offsetCount, SEEK_SET);
     lseek(fdBig, offsetCount, SEEK_SET);
