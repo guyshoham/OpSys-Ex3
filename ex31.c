@@ -33,7 +33,7 @@ int main(int argc, char** argv) {
   if (fileOneSize == fileTwoSize) {
     sameSize = true;
     fullSize = fileOneSize; // doesnt matter if assign stat_p1 or stat_p2
-    offsets = 1;
+    offsets = fullSize;
     if (fileOneSize % 2 == 0) {
       smallHalfSize = fileOneSize / 2;
     } else {
@@ -41,14 +41,14 @@ int main(int argc, char** argv) {
     }
   } else if (fileOneSize < fileTwoSize) {
     isOneSmaller = true;
-    offsets = fileTwoSize - fileOneSize + 1;
+    offsets = fileTwoSize;
     if (fileOneSize % 2 == 0) {
       smallHalfSize = fileOneSize / 2;
     } else {
       smallHalfSize = (fileOneSize / 2) + 1;
     }
   } else { //fileTwo is smaller
-    offsets = fileOneSize - fileTwoSize + 1;
+    offsets = fileOneSize;
     if (fileTwoSize % 2 == 0) {
       smallHalfSize = fileTwoSize / 2;
     } else {
@@ -103,13 +103,16 @@ bool checkSimilarity(int fdSmall, int fdBig, int countToReach, int offsets) {
 
   int i;
   for (i = 0; i < offsets; i++) {
-    charMatched = 0;
-    lseek(fdSmall, offsetCount, SEEK_SET);
+    lseek(fdSmall, 0, SEEK_SET);
     lseek(fdBig, offsetCount, SEEK_SET);
+    charMatched = 0;
     readSmall = read(fdSmall, buf1, 1);
 
     while (readSmall != 0) {
       readBig = read(fdBig, buf2, 1);
+      if (readBig == 0) {
+        break;
+      }
       if (buf1[0] == buf2[0]) {
         charMatched++;
       }
