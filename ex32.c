@@ -1,5 +1,3 @@
-//Guy Shoham 302288444
-
 #include <dirent.h>
 #include <fcntl.h>
 #include <stdbool.h>
