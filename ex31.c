@@ -1,5 +1,3 @@
-//Guy Shoham 302288444
-
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
